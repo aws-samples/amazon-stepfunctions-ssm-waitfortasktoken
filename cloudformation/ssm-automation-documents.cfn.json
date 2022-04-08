@@ -1,0 +1,233 @@
+{
+    "AWSTemplateFormatVersion": "2010-09-09",
+    "Description": "AWS CloudFormation Template for creating the Systems Manager automation documents needed for Step Functions synchronous calls",
+    "Resources": {
+        "SfnRunCommandByTargets": {
+            "Type": "AWS::SSM::Document",
+            "Properties": {
+                "Content": {
+                    "description": "*This automation document implements an AWS-RunShellScript execution for a step functions waitForCallBack integration pattern. This allows step functions to synchronously call an AWS-RunShellScript. \n\n---\n# Details\nThis AWS-RunShellScript document wrapper for will execute the necessary step function api calls send_task_success upon successful execution and send_task_failure when errors occur.\n\nThis document is used to target an array of search criteria. To use InstanceIds filtering please check SfnRunCommandByInstanceIds.\n\nThe automation consists of three steps to achieve a synchronous call when using (.waitForCallBack) option in step functions.\n>1. **RunCommand** - takes several inputs and executes a RunShellScript command. Check details for tab more information.\n2. **SendTaskSuccess** - executed when step 1 is successful and consists of an AWS step function api call (send_task_success) having as input the token passed by the step function\n3. **SendTaskFailure** - executed when step 1 is aborted or cancelled and consists of an AWS step function api call (send_task_failure) having as input the token passed by the step function and the execution failure error and cause\n\n## Sample step function StartAutomationExecution Task parameters \n\n> ```\n\"Parameters\": {\n \"DocumentName\": \"SfnRunCommandByInstanceIds\",\n \"Parameters\": {\r\n        \"DocumentName\": \"SfnRunCommandByTargets\",\r\n        \"Parameters\": {\r\n          \"Targets\":[{\"Key\":\"InstanceIds\",\"Values\":[\"i-02573cafcfEXAMPLE\",\"i-0471e04240EXAMPLE\"]}]\r\n          ,\r\n          \"taskToken.$\": \"States.Array($$.Task.Token)\",\r\n          \"workingDirectory\": [\r\n            \"\/home\/ssm-user\/\"\r\n          ],\r\n          \"Commands\": [\r\n            \"echo \\\"This is a test running automation waitForTaskToken\\\" >> automation.log\",\r\n            \"sleep 10\"\r\n          ]\r\n        }\r\n      }\n\n## References\n- Step function service integration patterns [wait for CallBack](https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token)\n- Step function boto3 api call send_task_success and send_task_failure [reference](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/stepfunctions.html)",
+                    "schemaVersion": "0.3",
+                    "assumeRole": {
+                        "Fn::GetAtt": [
+                            "SSMSyncRole",
+                            "Arn"
+                        ]
+                    },
+                    "parameters": {
+                        "Targets": {
+                            "type": "MapList",
+                            "description": "(Required) An array of search criteria that targets instances using Key-Value pairs that you specify. Example: [{\"Key\":\"InstanceIds\",\"Values\":[\"i-02573cafcfEXAMPLE\",\"i-0471e04240EXAMPLE\"]}]"
+                        },
+                        "taskToken": {
+                            "type": "String",
+                            "description": "(Required) Step Function task token for callback response"
+                        },
+                        "Commands": {
+                            "type": "StringList",
+                            "description": "(Required) Specify a shell script or a command to run."
+                        },
+                        "workingDirectory": {
+                            "type": "String",
+                            "default": "\"\"",
+                            "description": "(Optional) The path to the working directory on your instance."
+                        },
+                        "executionTimeout": {
+                            "type": "Integer",
+                            "description": "(Optional) The path to the working directory on your instance.",
+                            "default": 3600
+                        }
+                    },
+                    "mainSteps": [
+                        {
+                            "name": "RunCommand",
+                            "action": "aws:runCommand",
+                            "inputs": {
+                                "DocumentName": "AWS-RunShellScript",
+                                "Parameters": {
+                                    "commands": "{{Commands}}",
+                                    "workingDirectory": "{{workingDirectory}}"
+                                },
+                                "TimeoutSeconds": "{{executionTimeout}}",
+                                "Targets": "{{ Targets }}"
+                            },
+                            "nextStep": "SendTaskSuccess",
+                            "onFailure": "step:SendTaskFailure",
+                            "onCancel": "step:SendTaskFailure"
+                        },
+                        {
+                            "name": "SendTaskSuccess",
+                            "action": "aws:executeAwsApi",
+                            "inputs": {
+                                "Service": "stepfunctions",
+                                "Api": "send_task_success",
+                                "taskToken": "{{ taskToken }}",
+                                "output": "{}"
+                            },
+                            "isEnd": true,
+                            "timeoutSeconds": 50
+                        },
+                        {
+                            "name": "SendTaskFailure",
+                            "action": "aws:executeAwsApi",
+                            "inputs": {
+                                "Service": "stepfunctions",
+                                "Api": "send_task_failure",
+                                "taskToken": "{{ taskToken }}",
+                                "error": "Automation document failure",
+                                "cause": "RunCommand failed, check command execution id {{RunCommand.CommandId}} for more details"
+                            },
+                            "timeoutSeconds": 50
+                        }
+                    ]
+                },
+                "Name": "SfnRunCommandByTargets",
+                "DocumentType": "Automation",
+                "TargetType": "/AWS::EC2::Host"
+            }
+        },
+        "SfnRunCommandByInstanceIds": {
+            "Type": "AWS::SSM::Document",
+            "Properties": {
+                "Content": {
+                    "description": "*This automation document implements an AWS-RunShellScript execution for a step functions waitForCallBack integration pattern. This allows step functions to synchronously call an AWS-RunShellScript. \n\n---\n# Details\nThis AWS-RunShellScript document wrapper for will execute the necessary step function api calls send_task_success upon successful execution and send_task_failure when errors occur.\n\nThis document is used to target a list of InstanceIds. To use target filtering please check SfnRunCommandByTargets.\n\nThe automation consists of three steps to achieve a synchronous call when using (.waitForCallBack) option in step functions.\n>1. **RunCommand** - takes several inputs and executes a RunShellScript command. Check details tab for more information.\n2. **SendTaskSuccess** - executed when step 1 is successful and consists of an AWS step function api call (send_task_success) having as input the token passed by the step function\n3. **SendTaskFailure** - executed when step 1 is aborted or cancelled and consists of an AWS step function api call (send_task_failure) having as input the token passed by the step function and the execution failure error and cause\n\n## Sample step function StartAutomationExecution Task parameters \n\n> ```\n\"Parameters\": {\n \"DocumentName\": \"SfnRunCommandByInstanceIds\",\n \"Parameters\": {\n     \"InstanceIds.$\": \"States.Array($.runInstances.Instances[0].InstanceId)\",\n     \"taskToken.$\": \"States.Array($$.Task.Token)\",\n     \"workingDirectory\": [\n         \"/home/ssm-user/\"\n     ],\n     \"Commands\": [\n        \"echo test\"\n     ]\n }\n}\n\n## References\n- Step function service integration patterns [wait for CallBack](https://docs.aws.amazon.com/step-functions/latest/dg/connect-to-resource.html#connect-wait-token)\n- Step function boto3 api call send_task_success and send_task_failure [reference](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/stepfunctions.html)",
+                    "schemaVersion": "0.3",
+                    "assumeRole": {
+                        "Fn::GetAtt": [
+                            "SSMSyncRole",
+                            "Arn"
+                        ]
+                    },
+                    "parameters": {
+                        "InstanceIds": {
+                            "type": "StringList",
+                            "description": "(Required) The IDs of the instances where you want to run the command."
+                        },
+                        "taskToken": {
+                            "type": "String",
+                            "description": "(Required) Step Function task token for callback response."
+                        },
+                        "Commands": {
+                            "type": "StringList",
+                            "description": "(Required) Specify a shell script or a command to run."
+                        },
+                        "workingDirectory": {
+                            "type": "String",
+                            "default": "\"\"",
+                            "description": "(Optional) The path to the working directory on your instance."
+                        },
+                        "executionTimeout": {
+                            "type": "Integer",
+                            "description": "(Optional) The time in seconds for a command to complete before it is considered to have failed. Default is 3600 (1 hour). Maximum is 172800 (48 hours).",
+                            "default": 3600
+                        }
+                    },
+                    "mainSteps": [
+                        {
+                            "name": "RunCommand",
+                            "action": "aws:runCommand",
+                            "inputs": {
+                                "DocumentName": "AWS-RunShellScript",
+                                "Parameters": {
+                                    "commands": "{{Commands}}",
+                                    "workingDirectory": "{{workingDirectory}}"
+                                },
+                                "TimeoutSeconds": "{{executionTimeout}}",
+                                "InstanceIds": "{{InstanceIds}}"
+                            },
+                            "nextStep": "SendTaskSuccess",
+                            "onFailure": "step:SendTaskFailure",
+                            "onCancel": "step:SendTaskFailure"
+                        },
+                        {
+                            "name": "SendTaskSuccess",
+                            "action": "aws:executeAwsApi",
+                            "inputs": {
+                                "Service": "stepfunctions",
+                                "Api": "send_task_success",
+                                "taskToken": "{{ taskToken }}",
+                                "output": "{}"
+                            },
+                            "isEnd": true,
+                            "timeoutSeconds": 50
+                        },
+                        {
+                            "name": "SendTaskFailure",
+                            "action": "aws:executeAwsApi",
+                            "inputs": {
+                                "Service": "stepfunctions",
+                                "Api": "send_task_failure",
+                                "taskToken": "{{ taskToken }}",
+                                "error": "Automation document failure",
+                                "cause": "RunCommand failed, check command execution id {{RunCommand.CommandId}} for more details"
+                            },
+                            "timeoutSeconds": 50
+                        }
+                    ]
+                },
+                "Name": "SfnRunCommandByInstanceIds",
+                "DocumentType": "Automation",
+                "TargetType": "/AWS::EC2::Host"
+            }
+        },
+        "SSMSyncRole": {
+            "Type": "AWS::IAM::Role",
+            "Properties": {
+                "AssumeRolePolicyDocument": {
+                    "Statement": [
+                        {
+                            "Effect": "Allow",
+                            "Principal": {
+                                "Service": "ssm.amazonaws.com"
+                            },
+                            "Action": "sts:AssumeRole"
+                        }
+                    ],
+                    "Version": "2012-10-17"
+                },
+                "RoleName": "sync-run-shell-script-role",
+                "Policies":[
+                    {
+                        "PolicyName":"sync-run-shell-policy",
+                        "PolicyDocument": {
+                            "Version": "2012-10-17",
+                            "Statement": [
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "ssm:DescribeInstanceInformation",
+                                    "Resource": "*"
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": "ssm:SendCommand",
+                                    "Resource": [
+                                        {"Fn::Sub": "arn:aws:ec2:${AWS::Region}:${AWS::AccountId}:instance/*"},
+                                        {"Fn::Sub": "arn:aws:ssm:${AWS::Region}::document/AWS-RunShellScript"}
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "ssm:ListCommands",
+                                        "ssm:ListCommandInvocations"
+                                    ],
+                                    "Resource": [
+                                        {"Fn::Sub": "arn:aws:ssm:${AWS::Region}:${AWS::AccountId}:*"}
+                                    ]
+                                },
+                                {
+                                    "Effect": "Allow",
+                                    "Action": [
+                                        "states:SendTaskFailure",
+                                        "states:SendTaskSuccess"
+                                    ],
+                                    "Resource": {"Fn::Sub": "arn:aws:states:${AWS::Region}:${AWS::AccountId}:stateMachine:*"}
+                                }
+                            ]
+                        }
+                    }
+                ]
+            }
+        }
+    }
+}
