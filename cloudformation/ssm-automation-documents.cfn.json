@@ -33,9 +33,9 @@
                             "description": "(Optional) The path to the working directory on your instance."
                         },
                         "executionTimeout": {
-                            "type": "Integer",
+                            "type": "String",
                             "description": "(Optional) The path to the working directory on your instance.",
-                            "default": 3600
+                            "default": "3600"
                         }
                     },
                     "mainSteps": [
@@ -46,9 +46,9 @@
                                 "DocumentName": "AWS-RunShellScript",
                                 "Parameters": {
                                     "commands": "{{Commands}}",
-                                    "workingDirectory": "{{workingDirectory}}"
+                                    "workingDirectory": "{{workingDirectory}}",
+                                    "executionTimeout": "{{executionTimeout}}"
                                 },
-                                "TimeoutSeconds": "{{executionTimeout}}",
                                 "Targets": "{{ Targets }}"
                             },
                             "nextStep": "SendTaskSuccess",
@@ -117,9 +117,9 @@
                             "description": "(Optional) The path to the working directory on your instance."
                         },
                         "executionTimeout": {
-                            "type": "Integer",
+                            "type": "String",
                             "description": "(Optional) The time in seconds for a command to complete before it is considered to have failed. Default is 3600 (1 hour). Maximum is 172800 (48 hours).",
-                            "default": 3600
+                            "default": "3600"
                         }
                     },
                     "mainSteps": [
@@ -130,9 +130,9 @@
                                 "DocumentName": "AWS-RunShellScript",
                                 "Parameters": {
                                     "commands": "{{Commands}}",
-                                    "workingDirectory": "{{workingDirectory}}"
+                                    "workingDirectory": "{{workingDirectory}}",
+                                    "executionTimeout": "{{executionTimeout}}"
                                 },
-                                "TimeoutSeconds": "{{executionTimeout}}",
                                 "InstanceIds": "{{InstanceIds}}"
                             },
                             "nextStep": "SendTaskSuccess",
