@@ -1,17 +1,17 @@
 ## Step Functions and Systems Manager Automation document .waitForTaskToken implementation
 
 ### Summary
-In this pattern, we implement an automation document wrapper around AWS-RunShellScript execution for a AWS Step Functions waitForTaskToken integration. This will allow step functions to synchronously call an AWS-RunShellScript.
+In this pattern, we implement an automation document wrapper around AWS-RunShellScript or AWS-RunPowerShellScript execution for a AWS Step Functions waitForTaskToken integration. This will allow step functions to synchronously call an AWS-RunShellScript or AWS-RunPowerShellScript.
 
 The following AWS Services are used in this pattern:
 - AWS Systems Manager
 - AWS Step Functions
 
 #### Automation and scale
-The Cloudformation template provided will deploy two Systems Manager Automation documents allowing to run synchronously AWS-RunShellScript task using Targets or Instance Ids from Step Functions:
+The Cloudformation template provided will deploy two Systems Manager Automation documents allowing to run synchronously AWS-RunShellScript or AWS-RunPowerShellScript task using Targets or Instance Ids from Step Functions:
 
-- **SfnRunCommandByInstanceIds** - SSM documents allowing to execute AWS-RunShellScript by Instance Ids
-- **SfnRunCommandByTargets** - SSM documents allowing to execute AWS-RunShellScript by Target
+- **SfnRunCommandByInstanceIds** - SSM documents allowing to execute AWS-RunShellScript or AWS-RunPowerShellScript by Instance Ids
+- **SfnRunCommandByTargets** - SSM documents allowing to execute AWS-RunShellScript or AWS-RunPowerShellScript by Target
 - **SSMSyncRole** - IAM Role assumed by the SSM documents
 
 ### Architecture
@@ -35,9 +35,10 @@ Each automation document consists of three steps to achieve a synchronous call w
 
 |Step|	Action|	Description|
 |----|--------|------------|
-|1	|RunCommand|	Executes RunShellScript command|
-|2	|SendTaskFailure|	Executed when step 1 is aborted or cancelled and consists of an AWS step function api |call (send_task_failure) having as input the token passed by the step function and the execution failure error and cause
-|3	|SendTaskSuccess|	Executed when step 1 is successful and consists of an AWS step function api call |(send_task_success) having as input the token passed by the step function
+|1	|Branch|Checks the shell parameter value (Shell or PowerShell) to decide whether to trigger AWS-RunShellScript for Linux or AWS-RunPowerShellScript for Windows|
+|2  |RunCommand_Shell or RunCommand_PowerShell|Takes several inputs and executes a RunShellScript or RunPowerShellScript command. Check details tab for more information|
+|2	|SendTaskFailure|	Executed when step 2 is aborted or cancelled and consists of an AWS step function api |call (send_task_failure) having as input the token passed by the step function and the execution failure error and cause|
+|3	|SendTaskSuccess|	Executed when step 2 is successful and consists of an AWS step function api call |(send_task_success) having as input the token passed by the step function|
 
 
 ### Automation documents parameters
@@ -45,7 +46,9 @@ Each automation document consists of three steps to achieve a synchronous call w
 
 |Name|	Type|	Description	|Default Value|
 |----|------|---------------|-------------|
-|executionTimeout|	Integer|	(Optional) The time in seconds for a command to complete before it is considered to have failed. Default is 3600 (1 hour). Maximum is 172800 (48 hours).	|3600|
+|shell|String|(Required) The instances shell to decide whether to run AWS-RunShellScript for Linux or AWS-RunPowerShellScript for Windows.|Shell|
+|deliveryTimeout|	Integer|	If this time is reached and the command hasn't already started running, it won't run. Minimum value of 30. Maximum value of 2592000.	|3600|
+|executionTimeout|	String|	(Optional) The time in seconds for a command to complete before it is considered to have failed. Default is 3600 (1 hour). Maximum is 172800 (48 hours).	|3600|
 |workingDirectory|	String|	(Optional) The path to the working directory on your instance.|	""|
 |Commands|	StringList|	(Required) Specify a shell script or a command to run.	|-|
 |InstanceIds|	StringList|	(Required) The IDs of the instances where you want to run the command.	|-|
@@ -54,7 +57,9 @@ Each automation document consists of three steps to achieve a synchronous call w
 #### SfnRunCommandByTargets
 |Name|	Type|	Description	|Default Value|
 |----|------|---------------|-------------|
-|executionTimeout|	Integer|	(Optional) The path to the working directory on your instance.	|3600|
+|shell| String| (Required) The instances shell to decide whether to run AWS-RunShellScript for Linux or AWS-RunPowerShellScript for Windows.|Shell|
+|deliveryTimeout|	Integer|	If this time is reached and the command hasn't already started running, it won't run. Minimum value of 30. Maximum value of 2592000.	|3600|
+|executionTimeout|	String|	(Optional) The path to the working directory on your instance.	|3600|
 |workingDirectory|	String|	(Optional) The path to the working directory on your instance.	|""|
 |Commands|	StringList|	(Required) Specify a shell script or a command to run.	|-|
 |Targets|	MapList|	(Required) An array of search criteria that targets instances using Key-Value pairs that you specify. Example: [{"Key":"InstanceIds","Values":["i-02573cafcfEXAMPLE","i-0471e04240EXAMPLE"]}]	|-|
@@ -75,8 +80,17 @@ Each automation document consists of three steps to achieve a synchronous call w
             "Commands": [
                 "echo \"This is a test running automation waitForTaskToken\" >> automation.log",
                 "sleep 100"
+            ],
+            "executionTimeout": [
+              "10800"
+            ],
+            "deliveryTimeout": [
+              "30"
+            ],
+            "shell": [
+              "Shell"
             ]    
-            }
+          }
         }
 ```
 ### Prerequisites and limitations
@@ -130,7 +144,17 @@ For more information on how to create a step function, please check https://docs
           "Commands": [
             "echo \"This is a test running automation waitForTaskToken\" >> automation.log",
             "sleep 100"
-          ]
+          ],
+          "executionTimeout": [
+              "10800"
+            ],
+          "deliveryTimeout": [
+              "30"
+            ],
+          "shell": [
+              "Shell"
+            ]    
+          }
         }
       },
       "End": true
