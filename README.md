@@ -125,7 +125,7 @@ For more information on how to create a step function, please check https://docs
 
 ```json
 {
-  "Comment": "A description of my state machine",
+  "Comment": "Step function to synchronously call an AWS-RunShellScript or AWS-RunPowerShellScrip",
   "StartAt": "StartAutomationWaitForCallBack",
   "States": {
     "StartAutomationWaitForCallBack": {
@@ -170,8 +170,56 @@ The step function creation will generally create a dedicated role automatically 
 ```json
 {
             "Effect": "Allow",
-            "Action": "ssm:StartAutomationExecution",
+            "Action": [
+              "ssm:StartAutomationExecution",
+              "ec2:DescribeInstances"
+            ],
             "Resource": "*"
+}
+```
+
+#### **JSONata Step Function Implementation**
+
+The following enhanced Step Function definition demonstrates advanced JSONata integration with dynamic instance discovery and parameter transformation. This version automatically discovers running Linux instances and applies conditional logic for parameter assignment.
+
+```json
+{
+  "Comment": "JSONata Step functions to synchronously call an AWS-RunShellScript or AWS-RunPowerShellScript",
+  "StartAt": "DescribeInstances",
+  "States": {
+    "DescribeInstances": {
+      "Type": "Task",
+      "Arguments": {},
+      "Resource": "arn:aws:states:::aws-sdk:ec2:describeInstances",
+      "Next": "StartAutomationExecution",
+      "Assign": {
+        "timeout": "10800",
+        "deliveryTimeout": "30",
+        "osType": "linux"
+      }
+    },
+    "StartAutomationExecution": {
+      "Type": "Task",
+      "Arguments": {
+        "DocumentName": "SfnRunCommandByInstanceIds",
+        "Parameters": {
+          "InstanceIds": "{% $states.input.Reservations.Instances[State.Name = \"running\" and $contains($lowercase(PlatformDetails), $osType)].InstanceId[] %}",
+          "taskToken": ["{% $states.context.Task.Token %}"],
+          "Commands": [
+            "echo \"This is a test running automation waitForTaskToken\" >> automation.log",
+            "sleep 100"
+          ],
+          "workingDirectory": ["/home/ssm-user/"],
+          "executionTimeout": "{% [$timeout ? $string($timeout) : \"3600\"] %}",
+          "deliveryTimeout": "{% [$deliveryTimeout ? $string($deliveryTimeout) : \"30\"] %}",
+          "shell": "{% [$osType = \"linux\" ? \"Shell\" : \"PowerShell\"] %}"
+        }
+      },
+      "Resource": "arn:aws:states:::aws-sdk:ssm:startAutomationExecution.waitForTaskToken",
+      "End": true
+    }
+  },
+  "QueryLanguage": "JSONata"
 }
 ```
 ## Security
@@ -190,3 +238,62 @@ This library is licensed under the MIT-0 License. See the LICENSE file.
 [Step Functions boto3 api call send_task_success and send_task_failure](https://boto3.amazonaws.com/v1/documentation/api/latest/reference/services/stepfunctions.html)
 
 [SSM Automation Documents](https://docs.aws.amazon.com/systems-manager/latest/userguide/systems-manager-automation.html)
+
+## Appendices 
+### Appendix A - JSONata Step Function Logic Explanation
+
+#### **State 1: DescribeInstances**
+- **Purpose**: Discovers all EC2 instances in the account
+- **Resource**: `arn:aws:states:::aws-sdk:ec2:describeInstances`
+- **Assign Block**: Sets variables for use in subsequent states:
+  - `timeout`: "10800" (3 hours execution timeout)
+  - `deliveryTimeout`: "30" (30 seconds delivery timeout)
+  - `osType`: "linux" (target operating system)
+
+#### **State 2: StartAutomationExecution**
+Uses JSONata expressions for dynamic parameter transformation:
+
+#### **Dynamic Instance Selection**
+```jsonata
+$states.input.Reservations.Instances[State.Name = "running" and $contains($lowercase(PlatformDetails), $osType)].InstanceId[]
+```
+- Filters instances that are **running** AND contain **osType**. value (assigned in previous state) which equals to **"linux"** in PlatformDetails, in my example. 
+- Extracts only the `InstanceId` values
+- `[]` ensures array output format
+
+#### **Context-Aware Task Token**
+```jsonata
+$states.context.Task.Token
+```
+- Accesses Step Functions execution context
+- Retrieves the task token for waitForTaskToken pattern
+
+#### **Conditional Parameter Assignment**
+```jsonata
+/* Execution Timeout with Fallback */
+[$timeout ? $string($timeout) : "3600"]
+
+/* Delivery Timeout with Fallback */
+[$deliveryTimeout ? $string($deliveryTimeout) : "30"]
+
+/* OS-Based Shell Selection */
+[$osType = "linux" ? "Shell" : "PowerShell"]
+```
+
+#### **JSONata Expression Patterns**
+
+| Pattern | Purpose | Example |
+|---------|---------|---------|
+| `$states.input.*` | Access previous state output | `$states.input.Reservations.Instances` |
+| `$states.context.*` | Access execution context | `$states.context.Task.Token` |
+| `[condition ? value : default]` | Conditional with array wrapper | `[$timeout ? $string($timeout) : "3600"]` |
+| `$contains(field, "text")` | String matching | `$contains(PlatformDetails, "linux")` |
+| `$string(value)` | Type conversion | `$string($timeout)` |
+
+#### **Key Advantages**
+1. **Dynamic Discovery**: No hardcoded instance IDs
+2. **Platform Filtering**: Automatically selects appropriate instances
+3. **Conditional Logic**: Adapts parameters based on context
+4. **Type Safety**: Ensures proper string conversion for SSM
+5. **Fallback Values**: Provides sensible defaults
+
